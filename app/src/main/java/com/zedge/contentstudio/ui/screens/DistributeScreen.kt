@@ -1,5 +1,7 @@
 package com.zedge.contentstudio.ui.screens
 
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Send
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -101,8 +103,8 @@ fun DistributeScreen(vm: MainViewModel) {
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("Sent this session", vm.repo.distPushedNames.size.toString(), Modifier.weight(1f), Ok)
-                StatTile("Next account", Accounts.byKey(Accounts.distOrder[pointer]).label, Modifier.weight(1f), BrandAmber)
+                StatTile("Sent this session", vm.repo.distPushedNames.size.toString(), Modifier.weight(1f), Ok, icon = Icons.Default.Send) // v27.9 icons
+                StatTile("Next account", Accounts.byKey(Accounts.distOrder[pointer]).label, Modifier.weight(1f), BrandAmber, icon = Icons.Default.AccountCircle)
             }
         }
         item { Spacer(Modifier.height(56.dp)) }
