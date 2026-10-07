@@ -326,7 +326,7 @@ class QueueRepository(private val context: Context) {
     }
 
     // ---- 1. Plain queue upload (images -> 1620x2880 JPEG, mp3 -> ringtone) ----
-    suspend fun uploadPlainFile(file: LocalFile, dbKey: String = activeKey.value, progress: Progress = {}) {
+    suspend fun uploadPlainFile(file: LocalFile, dbKey: String = activeKey.value, landscape: LocalFile? = null, progress: Progress = {}) {
         val isAudio = file.mime == "audio/mpeg" || file.isAudio
         val payload: JSONObject
         if (isAudio) {
@@ -339,8 +339,19 @@ class QueueRepository(private val context: Context) {
             progress("Uploading ${file.name}...")
             val url = r2.upload(resized, file.name, "image/jpeg", dbKey)
             payload = Json.obj("name" to file.name, "type" to "image/jpeg", "size" to resized.size, "width" to 1620, "height" to 2880, "isMp3" to false, "contentType" to "WALLPAPER", "fileUrl" to url)
+            attachLandscape(payload, file, landscape, dbKey, progress)
         }
         pushQueue(dbKey, merge(payload, basePayload()))
+    }
+
+    /** v27.14: resize + upload the optional 1:1 2000x2000 foldable / tablet companion of a single wallpaper. */
+    private suspend fun attachLandscape(payload: JSONObject, file: LocalFile, landscape: LocalFile?, dbKey: String, progress: Progress) {
+        if (landscape == null) return
+        progress("Resizing 1:1 foldable image...")
+        val square = withContext(Dispatchers.Default) { ImageUtils.resizeToSquare(landscape.bytes) }
+        progress("Uploading 1:1 foldable image...")
+        payload.put("landscapeUrl", r2.upload(square, ImageUtils.landscapeName(file.name), "image/jpeg", dbKey))
+        payload.put("landscapeSize", "2000x2000")
     }
 
     // ---- 2. Manual set upload (24H / Dual / Battery slot pickers) ----
@@ -379,7 +390,7 @@ class QueueRepository(private val context: Context) {
     }
 
     // ---- 4. Distribution payload for a single media file ----
-    suspend fun buildDistributionPayload(file: LocalFile, dbKey: String, videoType: String, progress: Progress): JSONObject {
+    suspend fun buildDistributionPayload(file: LocalFile, dbKey: String, videoType: String, landscape: LocalFile? = null, progress: Progress): JSONObject {
         if (file.mime == "audio/mpeg" || file.isAudio) {
             val url = r2.upload(file, dbKey)
             return Json.obj("name" to file.name, "type" to file.mime.ifBlank { "audio/mpeg" }, "size" to file.size, "isMp3" to true, "contentType" to "RINGTONE", "fileUrl" to url)
@@ -398,7 +409,9 @@ class QueueRepository(private val context: Context) {
         }
         val resized = withContext(Dispatchers.Default) { ImageUtils.resizeToPortrait(file.bytes) }
         val url = r2.upload(resized, file.name, "image/jpeg", dbKey)
-        return Json.obj("name" to file.name, "type" to "image/jpeg", "size" to resized.size, "width" to 1620, "height" to 2880, "isMp3" to false, "contentType" to "WALLPAPER", "fileUrl" to url)
+        val imgPayload = Json.obj("name" to file.name, "type" to "image/jpeg", "size" to resized.size, "width" to 1620, "height" to 2880, "isMp3" to false, "contentType" to "WALLPAPER", "fileUrl" to url)
+        attachLandscape(imgPayload, file, landscape, dbKey, progress)
+        return imgPayload
     }
 
     /** Upload a detected set's slot images and return its queue payload. */
@@ -462,7 +475,7 @@ class QueueRepository(private val context: Context) {
                     is ImportUnit.Set -> buildSetPayload(u.set, dbKey) { slot -> progress(i, total, "${i + 1}/$total $title - $slot: uploading$dest") }
                     is ImportUnit.File -> {
                         progress(i, total, "${i + 1}/$total $title: uploading$dest")
-                        buildDistributionPayload(u.entry.toLocalFile(), dbKey, videoType) { progress(i, total, it) }
+                        buildDistributionPayload(u.entry.toLocalFile(), dbKey, videoType, u.landscape?.toLocalFile()) { progress(i, total, it) }
                     }
                 }
                 val archive = when (u) { is ImportUnit.Set -> u.set.archive; is ImportUnit.File -> u.entry.archive }

@@ -27,7 +27,7 @@ class SetUnit(val type: String, val files: Map<String, ArchiveEntry>, val byName
 sealed class ImportUnit {
     class Set(val set: SetUnit) : ImportUnit()
     /** media = image | audio | video */
-    class File(val media: String, val entry: ArchiveEntry) : ImportUnit()
+    class File(val media: String, val entry: ArchiveEntry, val landscape: ArchiveEntry? = null) : ImportUnit()
 
     val title: String
         get() = when (this) {
@@ -49,6 +49,10 @@ object ArchiveClassifier {
     val AUDIO_RE = Regex("\\.mp3$", RegexOption.IGNORE_CASE)
     val VIDEO_RE = Regex("\\.(mp4|mov)$", RegexOption.IGNORE_CASE)
     val AUX_RE = Regex("(preview|thumb|thumbnail|cover|poster|collage|mockup|screenshot)", RegexOption.IGNORE_CASE)
+    /** v27.14: "<name>-landscape.jpg" = the 1:1 2000x2000 foldable / tablet companion of "<name>.jpg". */
+    val LS_SUFFIX_RE = Regex("[-_](landscape|foldable|fold|ls|square|sq|2000)$", RegexOption.IGNORE_CASE)
+
+    fun stemOf(base: String): String = base.replace(Regex("\\.[^.]+$"), "")
 
     fun isJunk(path: String): Boolean {
         val b = path.substringAfterLast('/')
@@ -136,7 +140,21 @@ object ArchiveClassifier {
         val media = entries.filter { !isJunk(it.name) && (IMG_RE.containsMatchIn(it.name) || AUDIO_RE.containsMatchIn(it.name) || VIDEO_RE.containsMatchIn(it.name)) }
         media.filter { AUDIO_RE.containsMatchIn(it.name) }.sortedWith(compareBy(NaturalOrder) { it.name }).forEach { units.add(ImportUnit.File("audio", it)) }
         media.filter { VIDEO_RE.containsMatchIn(it.name) }.sortedWith(compareBy(NaturalOrder) { it.name }).forEach { units.add(ImportUnit.File("video", it)) }
-        val imgs = media.filter { IMG_RE.containsMatchIn(it.name) }
+        val allImgs = media.filter { IMG_RE.containsMatchIn(it.name) }
+        // v27.14: pair every "<name>-landscape.jpg" with its portrait and keep it OUT of set counting.
+        val lsFor = HashMap<String, ArchiveEntry>()
+        val companions = HashSet<String>()
+        for (e in allImgs) {
+            val stem = stemOf(e.base)
+            val m = LS_SUFFIX_RE.find(stem) ?: continue
+            val ownerStem = stem.substring(0, stem.length - m.value.length)
+            if (ownerStem.isBlank()) continue
+            val owner = allImgs.firstOrNull { it !== e && it.dir == e.dir && stemOf(it.base).equals(ownerStem, ignoreCase = true) } ?: continue
+            lsFor[owner.name] = e
+            companions.add(e.name)
+        }
+        if (companions.isNotEmpty()) notes.add("${companions.size} landscape/foldable companion image(s) paired with their 9:16 wallpaper (1:1 2000 x 2000)")
+        val imgs = allImgs.filter { it.name !in companions }
         val dirs = byDir(imgs)
         for ((dir, sorted) in dirs) {
             var files = sorted
@@ -160,7 +178,7 @@ object ArchiveClassifier {
                 continue
             }
             if (dir.isNotEmpty() && files.size > 1) notes.add("$label: ${files.size} images is not a set size (2 / 4 / 6) - queued as single wallpapers")
-            files.forEach { units.add(ImportUnit.File("image", it)) }
+            files.forEach { units.add(ImportUnit.File("image", it, lsFor[it.name])) }
         }
         return Classification(units, notes, media.size)
     }
@@ -172,6 +190,7 @@ object ArchiveClassifier {
         val parts = ArrayList<String>()
         for (t in listOf("WALLPAPER_24H", "WALLPAPER_DUAL", "WALLPAPER_BATTERY")) c[t]?.let { parts.add("$it x ${ContentTypes.SET_TYPES.getValue(t).label}") }
         c["image"]?.let { parts.add("$it single wallpaper(s)") }
+        units.count { it is ImportUnit.File && it.landscape != null }.let { if (it > 0) parts.add("$it with 1:1 foldable") }
         c["audio"]?.let { parts.add("$it ringtone(s)") }
         c["video"]?.let { parts.add("$it video(s)") }
         return parts.joinToString(", ")

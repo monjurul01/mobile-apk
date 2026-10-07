@@ -168,7 +168,9 @@ private enum class DeviceFrame(val label: String, val icon: ImageVector, val rat
     AND_DOT_LEFT("Dot left", Icons.Default.PhoneAndroid, 9f / 20f, 26, Notch.DOT_LEFT, 7, 7, 7, false),
     AND_DROP("Teardrop", Icons.Default.Smartphone, 9f / 19f, 24, Notch.DROP, 7, 7, 7, false),
     AND_FLAT("Bezel-less", Icons.Default.Smartphone, 9f / 20f, 18, Notch.NONE, 5, 5, 5, false),
-    TABLET("Tablet", Icons.Default.Tablet, 3f / 4f, 14, Notch.NONE, 14, 18, 18, false);
+    TABLET("Tablet", Icons.Default.Tablet, 3f / 4f, 14, Notch.NONE, 14, 18, 18, false),
+    FOLD_OPEN("Foldable (open)", Icons.Default.Tablet, 1f, 18, Notch.DOT, 10, 12, 12, false),
+    FOLD_COVER("Foldable (cover)", Icons.Default.Smartphone, 9f / 22f, 20, Notch.DOT, 7, 7, 7, false);
 }
 
 private val PRES_SPEEDS = listOf(2000L, 3000L, 5000L, 8000L)
@@ -245,7 +247,8 @@ fun ItemDetailSheet(vm: MainViewModel, item: QueueItem, onDismiss: () -> Unit) {
         while (playing && frames.size > 1) { delay(speed); presIdx = (presIdx + 1) % frames.size }
     }
     val current = frames.getOrNull(presIdx)
-    val shownUrl = current?.url ?: item.previewUrl
+    val foldOpen = device == DeviceFrame.FOLD_OPEN && !item.isMp3 && !item.isVideoType && !item.isSetType
+    val shownUrl = if (foldOpen && item.landscapeUrl.isNotBlank()) item.landscapeUrl else (current?.url ?: item.previewUrl)
     val shownSlot = current?.slot ?: item.slots.firstOrNull()
 
     val c = typeColor(item.dayType)
@@ -284,7 +287,7 @@ fun ItemDetailSheet(vm: MainViewModel, item: QueueItem, onDismiss: () -> Unit) {
                     .padding(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                PhoneMockup(item, shownUrl, shownSlot, device, Modifier.width(if (device == DeviceFrame.TABLET) 250.dp else 208.dp), onTap = { if (shownUrl.isNotBlank() && !item.isMp3 && !item.isVideoType) zoomUrl = shownUrl })
+                PhoneMockup(item, shownUrl, shownSlot, device, Modifier.width(when (device) { DeviceFrame.TABLET -> 250.dp; DeviceFrame.FOLD_OPEN -> 268.dp; DeviceFrame.FOLD_COVER -> 150.dp; else -> 208.dp }), onTap = { if (shownUrl.isNotBlank() && !item.isMp3 && !item.isVideoType) zoomUrl = shownUrl })
 
                 // Device chooser
                 Spacer(Modifier.height(12.dp))
@@ -303,6 +306,17 @@ fun ItemDetailSheet(vm: MainViewModel, item: QueueItem, onDismiss: () -> Unit) {
                             Text(d.label, fontSize = 10.5.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold, color = if (sel) BrandDark else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                }
+
+                // v27.14: foldable / tablet image hint
+                if (foldOpen) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (item.landscapeUrl.isNotBlank()) "Showing the 1:1 2000 × 2000 landscape / foldable image"
+                        else "No 1:1 foldable image for this wallpaper - showing the 9:16 portrait",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (item.landscapeUrl.isNotBlank()) Ok else Warn,
+                    )
                 }
 
                 // Auto presentation

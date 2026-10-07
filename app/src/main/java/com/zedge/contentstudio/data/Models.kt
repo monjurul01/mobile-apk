@@ -18,6 +18,10 @@ class QueueItem(val id: String, val raw: JSONObject) {
     val createdAt: Long get() = raw.optLong("createdAt", 0L)
     val fileUrl: String get() = raw.optString("fileUrl", "")
     val thumbUrl: String get() = raw.optString("thumbUrl", "")
+    /** v27.14: 1:1 2000x2000 landscape / foldable companion of a single wallpaper. */
+    val landscapeUrl: String get() = raw.optString("landscapeUrl", "")
+    val landscapeSize: String get() = raw.optString("landscapeSize", "")
+    val hasLandscape: Boolean get() = landscapeUrl.isNotBlank()
     val error: String get() = raw.optString("error", "")
     val failedAt: Long get() = raw.optLong("failedAt", 0L)
 

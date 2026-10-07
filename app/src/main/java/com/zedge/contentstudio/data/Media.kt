@@ -114,7 +114,7 @@ class R2Uploader(private val http: OkHttpClient) {
             if (u.scheme?.lowercase() !in setOf("http", "https") || u.host.isNullOrBlank()) null else u.path.trimStart('/').ifBlank { null }
         } catch (_: Exception) { null }
 
-        private val URL_KEYS = setOf("fileUrl", "thumbUrl", "fileUrls", "files")
+        private val URL_KEYS = setOf("fileUrl", "thumbUrl", "landscapeUrl", "fileUrls", "files")
 
         /** Collect every http(s) URL stored under fileUrl / thumbUrl / fileUrls / files (set slots) in a queue row. */
         fun collectR2Urls(node: Any?, out: MutableSet<String>, underKey: Boolean = false) {
@@ -174,6 +174,36 @@ object ImageUtils {
         if (r !== bmp) bmp.recycle()
         return r
     }
+
+    const val SQUARE = 2000
+
+    /** v27.14: 1:1 2000 x 2000 foldable / tablet companion - same cover-crop rule as the web panel. */
+    fun resizeToSquare(bytes: ByteArray): ByteArray {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        var sample = 1
+        while (opts.outWidth / (sample * 2) >= SQUARE && opts.outHeight / (sample * 2) >= SQUARE) sample *= 2
+        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        var src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts) ?: throw IOException("Unsupported image")
+        src = applyExifRotation(bytes, src)
+        val scale = maxOf(SQUARE.toFloat() / src.width, SQUARE.toFloat() / src.height)
+        val nw = src.width * scale
+        val nh = src.height * scale
+        val dx = (SQUARE - nw) / 2f
+        val dy = (SQUARE - nh) / 2f
+        val out = Bitmap.createBitmap(SQUARE, SQUARE, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        canvas.drawBitmap(src, null, android.graphics.RectF(dx, dy, dx + nw, dy + nh), paint)
+        src.recycle()
+        val bos = ByteArrayOutputStream()
+        out.compress(Bitmap.CompressFormat.JPEG, 92, bos)
+        out.recycle()
+        return bos.toByteArray()
+    }
+
+    /** "sunset.jpg" -> "sunset-landscape.jpg" (the naming the bot and the master prompt expect). */
+    fun landscapeName(name: String): String = name.replace(Regex("\\.[^.]+$"), "") + "-landscape.jpg"
 
     fun jpegName(name: String): String = name.replace(Regex("\\.[^.]+$"), "") + ".jpg"
 }

@@ -174,6 +174,11 @@ fun UploadScreen(vm: MainViewModel) {
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.prepareVideo(videoType, uri)
     }
+    // v27.14: single wallpaper + optional 1:1 2000x2000 landscape / foldable companion
+    var lsPortrait by remember { mutableStateOf<Uri?>(null) }
+    var lsSquare by remember { mutableStateOf<Uri?>(null) }
+    val pickLsPortrait = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) lsPortrait = uri }
+    val pickLsSquare = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) lsSquare = uri }
 
     val account = Accounts.byKey(activeKey).label
     val queued = queueItems.filter { it.isQueued }
@@ -203,6 +208,32 @@ fun UploadScreen(vm: MainViewModel) {
             }
         }
 
+
+        // ------------------------------------------------------------ 1a. single wallpaper + landscape / foldable (v27.14)
+        item {
+            SectionCard(
+                "Single wallpaper + landscape / foldable",
+                "9:16 wallpaper (1620 × 2880) plus an optional 1:1 2000 × 2000 version of the same artwork for foldables and tablets.",
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { pickLsPortrait.launch(arrayOf("image/*")) }, enabled = !busy) { Text(if (lsPortrait == null) "Pick 9:16 image" else "9:16 selected ✓") }
+                    OutlinedButton(onClick = { pickLsSquare.launch(arrayOf("image/*")) }, enabled = !busy) { Text(if (lsSquare == null) "Pick 1:1 (optional)" else "1:1 selected ✓") }
+                    if (lsSquare != null) TextButton(onClick = { lsSquare = null }) { Text("Clear") }
+                }
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { val p = lsPortrait; if (p != null) { vm.uploadSingleWithLandscape(p, lsSquare); lsPortrait = null; lsSquare = null } },
+                    enabled = !busy && lsPortrait != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (lsSquare != null) "Upload wallpaper + foldable image" else "Upload wallpaper") }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "The 1:1 file is optional - it is resized to exactly 2000 × 2000 and the bot uploads it to Zedge as the landscape/foldable wallpaper. In a ZIP, name it <name>-landscape.jpg and smart import pairs it automatically.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         // ------------------------------------------------------------ 1b. AI metadata JSON (v22)
         item {

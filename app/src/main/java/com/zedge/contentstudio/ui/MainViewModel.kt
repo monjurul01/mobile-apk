@@ -231,6 +231,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** v27.14: one 9:16 wallpaper + its optional 1:1 2000x2000 landscape / foldable companion. */
+    fun uploadSingleWithLandscape(portrait: Uri, landscape: Uri?) = locked {
+        viewModelScope.launch {
+            try {
+                val files = readFiles(listOfNotNull(portrait, landscape))
+                val p = files.getOrNull(0)
+                if (p == null || !p.isImage) { toast("Pick a JPG / PNG / WEBP wallpaper", "err"); return@launch }
+                val ls = if (landscape != null) files.getOrNull(1) else null
+                if (landscape != null && (ls == null || !ls.isImage)) { toast("The 1:1 foldable file must be an image", "err"); return@launch }
+                repo.uploadPlainFile(p, activeKey.value, ls) { progress.value = JobProgress("Uploading to ${activeKey.value.uppercase()}", it, 0, 1) }
+                statusText.value = if (ls != null) "${p.name} queued with its 1:1 foldable image" else "${p.name} queued"
+                toast(statusText.value, "ok")
+            } catch (e: Exception) { toast("${e.message}", "err") } finally { progress.value = null; repo.unlock() }
+        }
+    }
+
     /** v22: load one or more metadata .json files (no upload). */
     fun loadMetaJson(uris: List<Uri>) { viewModelScope.launch { try { readFiles(uris) } finally { progress.value = null } } }
 
@@ -346,7 +362,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (todo.isEmpty()) { distStatusText.value = "Nothing to distribute."; return }
         val res = repo.distributeFiles(todo, videoType) { i, total, text -> distStatusText.value = text; progress.value = JobProgress("Distributing", text, i, total) }
-        val s = "${res.ok}/${res.total} file(s) distributed across ZEDGE1 -> ZEDGE2 -> ZEDGE3 -> ZEDGE4" + (if (res.failed.isNotEmpty()) " - ${res.failed.size} failed" else "")
+        val s = "${res.ok}/${res.total} file(s) distributed across ZEDGE1 -> ZEDGE2 -> ZEDGE3" + (if (res.failed.isNotEmpty()) " - ${res.failed.size} failed" else "")
         distStatusText.value = s; toast(s, if (res.failed.isEmpty()) "ok" else "warn")
         if (res.failed.isNotEmpty()) alert(res.failed.joinToString("\n"), "Distribution problems")
     }
